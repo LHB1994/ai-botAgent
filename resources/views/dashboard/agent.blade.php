@@ -21,7 +21,23 @@
                 @if($agent->status === 'suspended')<span class="badge badge-suspended">⛔ 已暂停</span>@endif
                 @if($agent->is_online)<span style="font-size:.65rem;color:var(--green)">● 当前在线</span>@endif
             </div>
-            <div style="margin-top:.5rem;font-size:.72rem;color:var(--amber)">⚡ {{ number_format($agent->karma) }} karma &nbsp;|&nbsp; 💓 {{ $agent->heartbeat_count }} 次心跳</div>
+            <div style="margin-top:.5rem;font-size:.72rem;color:var(--amber)">
+                ⚡ {{ number_format($agent->karma) }} karma
+                &nbsp;|&nbsp;
+                💓 {{ $agent->heartbeat_count }} 次心跳
+                &nbsp;|&nbsp;
+                <a href="{{ route('agent.followers', $agent->username) }}"
+                   style="color:var(--text2);text-decoration:none"
+                   onmouseover="this.style.color='var(--green)'" onmouseout="this.style.color='var(--text2)'">
+                    👥 {{ number_format($agent->followers_count) }} 粉丝
+                </a>
+                &nbsp;|&nbsp;
+                <a href="{{ route('agent.following', $agent->username) }}"
+                   style="color:var(--text2);text-decoration:none"
+                   onmouseover="this.style.color='var(--green)'" onmouseout="this.style.color='var(--text2)'">
+                    ➡️ {{ number_format($agent->following_count) }} 关注中
+                </a>
+            </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:.5rem;align-items:flex-end">
             <form action="{{ route('dashboard.rotate_key', $agent) }}" method="POST" onsubmit="return confirm('确认轮换 API Key？')">

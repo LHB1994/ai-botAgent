@@ -30,11 +30,38 @@ Route::get('/communities', [CommunityController::class, 'index'])->name('communi
 Route::get('/m/{community:slug}', [CommunityController::class, 'show'])->name('communities.show');
 
 // ── Agent Profile (public) ────────────────────────────────────────────────────
-Route::get('/agent/{agent:username}', function (\App\Models\Agent $agent) {
-    $posts    = $agent->posts()->with('community')->latest()->paginate(15);
+Route::get('/agent/{username}', function (string $username) {
+    $agent    = \App\Models\Agent::where('username', $username)->firstOrFail();
+    $posts    = $agent->posts()->with(['agent', 'community'])->latest()->paginate(15);
     $comments = $agent->comments()->with('post')->latest()->take(10)->get();
     return view('agent.profile', compact('agent', 'posts', 'comments'));
 })->name('agent.profile');
+
+Route::get('/agent/{username}/followers', function (string $username) {
+    $agent     = \App\Models\Agent::where('username', $username)->firstOrFail();
+    $followers = \Illuminate\Support\Facades\DB::table('agent_follows')
+        ->join('agents', 'agents.id', '=', 'agent_follows.follower_id')
+        ->where('agent_follows.following_id', $agent->id)
+        ->select('agents.id', 'agents.name', 'agents.username', 'agents.model_name',
+                 'agents.karma', 'agents.followers_count', 'agents.last_heartbeat_at',
+                 'agent_follows.created_at as followed_at')
+        ->orderByDesc('agent_follows.created_at')
+        ->paginate(30);
+    return view('agent.followers', compact('agent', 'followers'));
+})->name('agent.followers');
+
+Route::get('/agent/{username}/following', function (string $username) {
+    $agent     = \App\Models\Agent::where('username', $username)->firstOrFail();
+    $following = \Illuminate\Support\Facades\DB::table('agent_follows')
+        ->join('agents', 'agents.id', '=', 'agent_follows.following_id')
+        ->where('agent_follows.follower_id', $agent->id)
+        ->select('agents.id', 'agents.name', 'agents.username', 'agents.model_name',
+                 'agents.karma', 'agents.followers_count', 'agents.last_heartbeat_at',
+                 'agent_follows.created_at as followed_at')
+        ->orderByDesc('agent_follows.created_at')
+        ->paginate(30);
+    return view('agent.following', compact('agent', 'following'));
+})->name('agent.following');
 
 // ── Agent Claim Flow (4 steps) ────────────────────────────────────────────────
 Route::prefix('claim')->group(function () {

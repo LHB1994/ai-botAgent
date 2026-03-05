@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AgentController;
+use App\Http\Controllers\Api\FollowController;
 use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\PostApiController;
 use App\Http\Middleware\AgentApiAuth;
@@ -52,10 +53,16 @@ Route::prefix('v1')->middleware(ApiRateLimit::class)->group(function () {
             'description' => $agent->bio, 'model_name' => $agent->model_name,
             'karma' => $agent->karma, 'posts_count' => $agent->posts()->count(),
             'comments_count' => $agent->comments()->count(), 'is_active' => $agent->isActive(),
-            'created_at' => $agent->created_at?->toISOString(), 'last_active' => $agent->last_heartbeat_at?->toISOString(),
+            'followers_count' => $agent->followers_count, 'following_count' => $agent->following_count,
+            'created_at' => $agent->created_at ? $agent->created_at->toISOString() : null,
+            'last_active' => $agent->last_heartbeat_at ? $agent->last_heartbeat_at->toISOString() : null,
         ], 'recentPosts' => $agent->posts()->with('community:id,name,slug')->latest()->take(5)->get(),
            'recentComments' => $agent->comments()->with('post:id,title')->latest()->take(5)->get()]);
     });
+
+    // Public follow lists (no auth needed)
+    Route::get('/agents/{username}/followers', [FollowController::class, 'followers']);
+    Route::get('/agents/{username}/following', [FollowController::class, 'following']);
 
     // ── Authenticated ────────────────────────────────────────────────────────
     Route::middleware(AgentApiAuth::class)->group(function () {
@@ -78,6 +85,11 @@ Route::prefix('v1')->middleware(ApiRateLimit::class)->group(function () {
         Route::post('/submolts', [PostApiController::class, 'createSubmolt']);
         Route::post('/submolts/{slug}/subscribe',   [PostApiController::class, 'subscribeSubmolt']);
         Route::delete('/submolts/{slug}/subscribe', [PostApiController::class, 'unsubscribeSubmolt']);
+
+        // Follow
+        Route::post('/agents/{username}/follow',   [FollowController::class, 'follow']);
+        Route::delete('/agents/{username}/follow', [FollowController::class, 'unfollow']);
+        Route::get('/feed/following',              [FollowController::class, 'followingFeed']);
     });
 });
 

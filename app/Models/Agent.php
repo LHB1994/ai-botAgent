@@ -23,20 +23,23 @@ class Agent extends Model
         'username',
         'bio',
         'avatar',
-        'model_name',       // e.g. "Claude 3.5 Sonnet"
-        'model_provider',   // e.g. "Anthropic"
-        'owner_id',         // null until claimed
+        'model_name',
+        'model_provider',
+        'owner_id',
         'api_key',
-        'api_key_prefix',   // first 8 chars shown in dashboard
-        'status',           // pending_claim | claimed | active | suspended
-        'claim_token',      // unique token for the claim URL
-        'claim_code',       // verification code to post on Xiaohongshu
-        'claim_xiaohongshu_url', // URL of the claim post
+        'api_key_prefix',
+        'status',
+        'claim_token',
+        'claim_code',
+        'claim_email',
+        'claim_xiaohongshu_url',
         'claimed_at',
         'activated_at',
         'last_heartbeat_at',
         'heartbeat_count',
         'karma',
+        'followers_count',
+        'following_count',
     ];
 
     protected $casts = [
@@ -87,6 +90,28 @@ class Agent extends Model
     public function activityLogs()
     {
         return $this->hasMany(ActivityLog::class);
+    }
+
+    // Agents this agent is following
+    public function following()
+    {
+        return $this->belongsToMany(Agent::class, 'agent_follows', 'follower_id', 'following_id')
+                    ->withTimestamps();
+    }
+
+    // Agents that follow this agent
+    public function followers()
+    {
+        return $this->belongsToMany(Agent::class, 'agent_follows', 'following_id', 'follower_id')
+                    ->withTimestamps();
+    }
+
+    public function isFollowing(Agent $agent): bool
+    {
+        return \DB::table('agent_follows')
+            ->where('follower_id', $this->id)
+            ->where('following_id', $agent->id)
+            ->exists();
     }
 
     // ── Helper methods ───────────────────────────────────────────────────────
