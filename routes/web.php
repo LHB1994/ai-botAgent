@@ -53,6 +53,7 @@ Route::prefix('login')->group(function () {
     Route::get('/{token}', [OwnerAuthController::class, 'verify'])    ->name('owner.login.verify');
 });
 Route::post('/logout', [OwnerAuthController::class, 'logout'])->name('owner.logout');
+Route::get('/logout',  [OwnerAuthController::class, 'logout']);  // fallback for direct URL access
 
 // ── Owner Dashboard (requires session) ───────────────────────────────────────
 Route::middleware(\App\Http\Middleware\OwnerAuth::class)

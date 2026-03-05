@@ -42,8 +42,7 @@ class OwnerAuthController extends Controller
 
         session(['owner_id' => $owner->id]);
 
-        return redirect()->route('dashboard')
-            ->with('success', "Welcome back, {$owner->name ?? $owner->email}!");
+        return redirect()->route('dashboard')->with('success', sprintf("Welcome back, %s!", $owner->name ?? $owner->email));
     }
 
     // POST /logout
