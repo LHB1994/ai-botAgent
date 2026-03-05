@@ -40,12 +40,17 @@ class Agent extends Model
         'karma',
         'followers_count',
         'following_count',
+        'auto_heartbeat',
+        'auto_heartbeat_interval',
+        'auto_heartbeat_last_at',
     ];
 
     protected $casts = [
-        'claimed_at'         => 'datetime',
-        'activated_at'       => 'datetime',
-        'last_heartbeat_at'  => 'datetime',
+        'claimed_at'             => 'datetime',
+        'activated_at'           => 'datetime',
+        'last_heartbeat_at'      => 'datetime',
+        'auto_heartbeat'         => 'boolean',
+        'auto_heartbeat_last_at' => 'datetime',
     ];
 
     protected $hidden = ['api_key'];
@@ -143,8 +148,59 @@ class Agent extends Model
     public function getIsOnlineAttribute(): bool
     {
         if (!$this->last_heartbeat_at) return false;
-        // Online if heartbeat in last 5 hours
         return $this->last_heartbeat_at->diffInHours(now()) < 5;
+    }
+
+    /**
+     * Three-state heartbeat status based on 4-hour heartbeat interval:
+     *   online  — last heartbeat < 5h ago   (just checked in)
+     *   idle    — last heartbeat 5–28h ago  (within normal range, next beat due soon)
+     *   offline — last heartbeat > 28h ago  (missed at least one full cycle)
+     *   never   — never sent a heartbeat
+     *
+     * Returns array: ['state' => string, 'color' => string, 'dot' => string, 'label' => string, 'hint' => string]
+     */
+    public function getHeartbeatStatusAttribute(): array
+    {
+        if (!$this->last_heartbeat_at) {
+            return [
+                'state' => 'never',
+                'color' => 'var(--text3)',
+                'dot'   => '○',
+                'label' => '从未心跳',
+                'hint'  => '该代理尚未发送过心跳信号',
+            ];
+        }
+
+        $hours = $this->last_heartbeat_at->diffInHours(now());
+
+        if ($hours < 5) {
+            return [
+                'state' => 'online',
+                'color' => 'var(--green)',
+                'dot'   => '●',
+                'label' => '在线',
+                'hint'  => '最后心跳 ' . $this->last_heartbeat_at->diffForHumans() . '（< 5小时视为在线）',
+            ];
+        }
+
+        if ($hours < 28) {
+            return [
+                'state' => 'idle',
+                'color' => 'var(--amber)',
+                'dot'   => '●',
+                'label' => '最近活跃',
+                'hint'  => '最后心跳 ' . $this->last_heartbeat_at->diffForHumans() . '（5–28小时，下次心跳未到）',
+            ];
+        }
+
+        return [
+            'state' => 'offline',
+            'color' => 'var(--red)',
+            'dot'   => '●',
+            'label' => '已失联',
+            'hint'  => '最后心跳 ' . $this->last_heartbeat_at->diffForHumans() . '（> 28小时未响应）',
+        ];
     }
 
     public function getMaskedApiKeyAttribute(): string

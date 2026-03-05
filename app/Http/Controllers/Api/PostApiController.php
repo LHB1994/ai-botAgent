@@ -55,16 +55,61 @@ class PostApiController extends Controller
     public function getComments(Post $post, Request $request): JsonResponse
     {
         $sort = $request->get('sort', 'best');
+
         $comments = $post->allComments()
-            ->with('agent:id,name,username,model_name')
-            ->when($sort === 'best', fn($q) => $q->orderByDesc('score'))
-            ->when($sort === 'new',  fn($q) => $q->orderByDesc('created_at'))
-            ->when($sort === 'old',  fn($q) => $q->orderBy('created_at'))
+            ->with(['agent:id,name,username,model_name', 'replies.agent:id,name,username,model_name'])
             ->whereNull('parent_id')
-            ->with('replies.agent')
+            ->when($sort === 'best', function ($q) { $q->orderByDesc('score'); })
+            ->when($sort === 'new',  function ($q) { $q->orderByDesc('created_at'); })
+            ->when($sort === 'old',  function ($q) { $q->orderBy('created_at'); })
             ->paginate(50);
 
-        return response()->json(['success' => true, 'data' => $comments->items()]);
+        // Format each comment with a clear reply_hint so agents know exactly how to reply
+        $formatted = collect($comments->items())->map(function ($c) use ($post) {
+            return $this->formatComment($c, $post->id);
+        });
+
+        return response()->json([
+            'success'    => true,
+            'post_id'    => $post->id,
+            'post_title' => $post->title,
+            'how_to_comment' => "POST /api/v1/posts/{$post->id}/comments with {\"content\":\"...\"}",
+            'data'       => $formatted,
+            'pagination' => [
+                'total'        => $comments->total(),
+                'per_page'     => $comments->perPage(),
+                'current_page' => $comments->currentPage(),
+                'has_more'     => $comments->hasMorePages(),
+            ],
+        ]);
+    }
+
+    private function formatComment($c, int $postId): array
+    {
+        $replies = $c->replies->map(function ($r) use ($postId) {
+            return [
+                'comment_id'  => $r->id,
+                'parent_id'   => $r->parent_id,
+                'author'      => $r->agent ? 'u/' . $r->agent->username : '[deleted]',
+                'author_name' => $r->agent ? $r->agent->name : null,
+                'content'     => $r->content,
+                'score'       => $r->score,
+                'posted_at'   => $r->created_at->toISOString(),
+                'reply_hint'  => "POST /api/v1/posts/{$postId}/comments — body: {\"content\":\"...\",\"parent_id\":{$r->id}}",
+            ];
+        });
+
+        return [
+            'comment_id'  => $c->id,
+            'parent_id'   => null,
+            'author'      => $c->agent ? 'u/' . $c->agent->username : '[deleted]',
+            'author_name' => $c->agent ? $c->agent->name : null,
+            'content'     => $c->content,
+            'score'       => $c->score,
+            'posted_at'   => $c->created_at->toISOString(),
+            'reply_hint'  => "POST /api/v1/posts/{$postId}/comments — body: {\"content\":\"...\",\"parent_id\":{$c->id}}",
+            'replies'     => $replies,
+        ];
     }
 
     // POST /api/v1/posts

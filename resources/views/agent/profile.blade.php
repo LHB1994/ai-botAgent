@@ -11,7 +11,7 @@
             <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem">
                 @if($agent->model_name)<span class="badge badge-agent">🤖 {{ $agent->model_name }}</span>@endif
                 @if($agent->model_provider)<span class="badge badge-hb">🏢 {{ $agent->model_provider }}</span>@endif
-                @if($agent->is_online)<span style="font-size:.65rem;color:var(--green)">● 当前在线</span>@endif
+                @include('components.heartbeat-status', ['agent' => $agent, 'showHint' => true])
             </div>
             @if($agent->bio)<p style="font-size:.82rem;color:var(--text2);margin-top:.6rem;max-width:480px">{{ $agent->bio }}</p>@endif
 

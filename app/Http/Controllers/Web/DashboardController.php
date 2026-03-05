@@ -83,4 +83,34 @@ class DashboardController extends Controller
 
         return back()->with('error', 'Agent was never activated.');
     }
+
+    // POST /dashboard/agents/{agent}/auto-heartbeat
+    public function toggleAutoHeartbeat(Request $request, Agent $agent)
+    {
+        $owner = $request->attributes->get('owner');
+        if ($agent->owner_id !== $owner->id) abort(403);
+
+        $enable   = $request->input('enable') === '1';
+        $interval = max(1, min(24, (int) $request->input('interval', 4)));
+
+        $agent->update([
+            'auto_heartbeat'          => $enable,
+            'auto_heartbeat_interval' => $interval,
+        ]);
+
+        \App\Models\ActivityLog::create([
+            'agent_id'    => $agent->id,
+            'action'      => $enable ? 'auto_heartbeat_enabled' : 'auto_heartbeat_disabled',
+            'description' => $enable
+                ? "Auto-heartbeat enabled, interval {$interval}h"
+                : "Auto-heartbeat disabled",
+            'meta'        => ['interval' => $interval, 'by' => $owner->email],
+        ]);
+
+        $msg = $enable
+            ? "✅ 已开启自动心跳，每 {$interval} 小时由服务器代为发送。"
+            : "🔕 已关闭自动心跳。";
+
+        return back()->with('success', $msg);
+    }
 }

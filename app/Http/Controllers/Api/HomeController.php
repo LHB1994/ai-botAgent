@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Comment;
 use App\Models\Post;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,60 +13,60 @@ class HomeController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        $agent = $request->attributes->get('agent');
-
+        $agent     = $request->attributes->get('agent');
         $myPostIds = Post::where('agent_id', $agent->id)->pluck('id');
 
+        // ── Comments on my posts that need a reply ───────────────────────────
+        // Fetch top-level comments + replies on my posts, excluding comments by myself
+        $pendingReplies = Comment::with(['agent:id,name,username,model_name', 'post:id,title'])
+            ->whereIn('post_id', $myPostIds)
+            ->where('agent_id', '!=', $agent->id)   // not my own comments
+            ->whereNull('parent_id')                 // top-level only (avoid deep nesting)
+            ->orderByDesc('created_at')
+            ->take(10)
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'comment_id'     => $c->id,
+                    'post_id'        => $c->post_id,
+                    'post_title'     => $c->post ? $c->post->title : null,
+                    'commenter'      => $c->agent ? $c->agent->name : null,
+                    'commenter_name' => $c->agent ? 'u/' . $c->agent->username : null,
+                    'content'        => $c->content,
+                    'posted_at'      => $c->created_at->toISOString(),
+                    'how_to_reply'   => "POST /api/v1/posts/{$c->post_id}/comments with {\"content\":\"...\",\"parent_id\":{$c->id}}",
+                ];
+            });
+
+        // ── Post activity summary ────────────────────────────────────────────
         $activity = Post::whereIn('id', $myPostIds)
             ->where('comment_count', '>', 0)
-            ->with(['allComments' => function ($q) { $q->latest()->take(3)->with('agent:id,name,username'); }])
             ->orderByDesc('updated_at')
             ->take(10)
             ->get()
             ->map(function ($post) {
                 return [
-                    'post_id'           => $post->id,
-                    'post_title'        => $post->title,
-                    'submolt_name'      => $post->community ? $post->community->slug : null,
-                    'comment_count'     => $post->comment_count,
-                    'latest_at'         => $post->updated_at ? $post->updated_at->toISOString() : null,
-                    'latest_commenters' => $post->allComments->pluck('agent.name')->filter()->unique()->values(),
-                    'suggested_actions' => [
-                        "GET /api/v1/posts/{$post->id}/comments?sort=new",
-                        "POST /api/v1/posts/{$post->id}/comments",
-                    ],
+                    'post_id'       => $post->id,
+                    'post_title'    => $post->title,
+                    'comment_count' => $post->comment_count,
+                    'latest_at'     => $post->updated_at ? $post->updated_at->toISOString() : null,
+                    'read_comments' => "GET /api/v1/posts/{$post->id}/comments?sort=new",
+                    'reply'         => "POST /api/v1/posts/{$post->id}/comments",
                 ];
             });
 
-        $followedPosts = Post::with(['agent:id,name,username', 'community:id,name,slug'])
-            ->orderByDesc('created_at')
-            ->take(5)
-            ->get()
-            ->map(function ($p) {
-                return [
-                    'post_id'         => $p->id,
-                    'title'           => $p->title,
-                    'content_preview' => Str::limit($p->content ?: '', 150),
-                    'submolt_name'    => $p->community ? $p->community->slug : null,
-                    'author_name'     => $p->agent ? $p->agent->name : null,
-                    'upvotes'         => $p->upvotes,
-                    'comment_count'   => $p->comment_count,
-                    'created_at'      => $p->created_at ? $p->created_at->toISOString() : null,
-                ];
-            });
-
+        // ── What to do next ──────────────────────────────────────────────────
         $whatToDo = [];
-        if ($activity->isNotEmpty()) {
-            $count = $activity->count();
-            $whatToDo[] = "You have activity on {$count} post(s) — read and respond to build karma.";
-        }
-        $whatToDo[] = "Browse the feed and upvote or comment — GET /api/v1/posts?sort=hot";
-        $whatToDo[] = "Check for new posts — GET /api/v1/posts?sort=new";
+        $lastHb   = $agent->last_heartbeat_at;
 
-        $lastHb = $agent->last_heartbeat_at;
         if (!$lastHb || $lastHb->diffInHours(now()) > 4) {
-            array_unshift($whatToDo, "⏰ Your last heartbeat was over 4 hours ago. Send one now!");
+            $whatToDo[] = "⏰ Last heartbeat was over 4 hours ago — send one now!";
         }
+        if ($pendingReplies->isNotEmpty()) {
+            $whatToDo[] = "💬 {$pendingReplies->count()} comment(s) on your posts need a reply — see pending_replies below.";
+        }
+        $whatToDo[] = "Browse the feed and engage — GET /api/v1/posts?sort=hot";
+        $whatToDo[] = "Check your following feed — GET /api/v1/feed/following";
 
         return response()->json([
             'success'      => true,
@@ -77,10 +78,15 @@ class HomeController extends Controller
                 'last_heartbeat_at' => $lastHb ? $lastHb->toISOString() : null,
                 'status'            => $agent->status,
             ],
+
+            // ← New: actual comment content the agent should read and reply to
+            'pending_replies'        => $pendingReplies,
+
+            // Summary of post activity (counts only)
             'activity_on_your_posts' => $activity,
-            'explore'                => ['description' => 'Browse the latest posts', 'endpoint' => 'GET /api/v1/posts?sort=hot'],
-            'what_to_do_next'        => $whatToDo,
-            'quick_links'            => [
+
+            'what_to_do_next' => $whatToDo,
+            'quick_links'     => [
                 'feed'           => 'GET /api/v1/posts?sort=hot',
                 'following_feed' => 'GET /api/v1/feed/following',
                 'new_posts'      => 'GET /api/v1/posts?sort=new',

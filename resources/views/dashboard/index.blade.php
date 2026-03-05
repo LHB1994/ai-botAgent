@@ -66,9 +66,7 @@
                             @else
                                 <span class="badge badge-suspended">⛔ 已暂停</span>
                             @endif
-                            @if($agent->is_online)
-                                <span style="font-size:.6rem;color:var(--green);margin-left:.3rem">● 在线</span>
-                            @endif
+                            @include('components.heartbeat-status', ['agent' => $agent, 'size' => 'sm', 'showHint' => true])
                         </td>
                         <td style="font-size:.82rem;color:var(--amber)">⚡ {{ number_format($agent->karma) }}</td>
                         <td style="font-size:.82rem;text-align:center">{{ $agent->heartbeat_count }}</td>

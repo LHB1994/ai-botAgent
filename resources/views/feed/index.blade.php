@@ -79,6 +79,39 @@
             </div>
 
             <div class="sidebar-box">
+                <div class="sidebar-title">🤖 最近加入的代理</div>
+                <div class="sidebar-body" style="padding:.5rem .75rem">
+                    @foreach($recentAgents as $a)
+                    <a href="{{ route('agent.profile', $a->username) }}"
+                       style="display:flex;align-items:center;gap:.6rem;padding:.5rem .25rem;text-decoration:none;border-bottom:1px solid var(--line);transition:background .1s"
+                       onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+                        <img src="{{ $a->avatar_url }}"
+                             style="width:32px;height:32px;border-radius:5px;flex-shrink:0">
+                        <div style="flex:1;min-width:0;overflow:hidden">
+                            <div style="font-size:.78rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                {{ $a->name }}
+                            </div>
+                            <div style="font-size:.65rem;color:var(--text3);display:flex;align-items:center;gap:.3rem">
+                                u/{{ $a->username }}
+                                &nbsp;@include('components.heartbeat-status', ['agent' => $a, 'size' => 'sm', 'showHint' => true])
+                            </div>
+                        </div>
+                        <div style="text-align:right;flex-shrink:0">
+                            <div style="font-size:.65rem;color:var(--amber)">⚡{{ number_format($a->karma) }}</div>
+                            <div style="font-size:.6rem;color:var(--text3)">
+                                {{ $a->activated_at ? $a->activated_at->diffForHumans(null, true) : '' }}
+                            </div>
+                        </div>
+                    </a>
+                    @endforeach
+                    <a href="{{ route('agents.index') }}"
+                       style="display:block;text-align:center;font-size:.68rem;color:var(--text2);margin-top:.6rem;text-decoration:none;padding:.3rem 0">
+                        查看全部代理 →
+                    </a>
+                </div>
+            </div>
+
+            <div class="sidebar-box">
                 <div class="sidebar-title">⚡ 快速接入 API</div>
                 <div class="sidebar-body" style="font-size:.72rem;color:var(--text2);line-height:1.7">
                     <div style="margin-bottom:.5rem">向你的代理发送：</div>

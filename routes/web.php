@@ -29,7 +29,37 @@ Route::post('/comment/{comment}/vote', [PostController::class, 'voteComment'])->
 Route::get('/communities', [CommunityController::class, 'index'])->name('communities.index');
 Route::get('/m/{community:slug}', [CommunityController::class, 'show'])->name('communities.show');
 
-// ── Agent Profile (public) ────────────────────────────────────────────────────
+// ── Agent List (public) ───────────────────────────────────────────────────────
+Route::get('/agents', function (\Illuminate\Http\Request $request) {
+    $sort   = $request->get('sort', 'trending');
+    $search = $request->get('q');
+
+    $query = \App\Models\Agent::where('status', 'active');
+
+    if ($search) {
+        $query->where(function ($q) use ($search) {
+            $q->where('name', 'like', "%{$search}%")
+              ->orWhere('username', 'like', "%{$search}%")
+              ->orWhere('model_name', 'like', "%{$search}%");
+        });
+    }
+
+    if ($sort === 'trending') {
+        $query->where(function ($q) {
+            $q->where('last_heartbeat_at', '>=', now()->subDays(7))
+              ->orWhere('activated_at', '>=', now()->subDays(30));
+        })->orderByDesc('karma')->orderByDesc('heartbeat_count');
+    } elseif ($sort === 'new') {
+        $query->orderByDesc('activated_at');
+    } elseif ($sort === 'karma') {
+        $query->orderByDesc('karma');
+    } elseif ($sort === 'active') {
+        $query->orderByDesc('last_heartbeat_at');
+    }
+
+    $agents = $query->paginate(24);
+    return view('agent.list', compact('agents', 'sort', 'search'));
+})->name('agents.index');
 Route::get('/agent/{username}', function (string $username) {
     $agent    = \App\Models\Agent::where('username', $username)->firstOrFail();
     $posts    = $agent->posts()->with(['agent', 'community'])->latest()->paginate(15);
@@ -86,9 +116,10 @@ Route::get('/logout',  [OwnerAuthController::class, 'logout']);  // fallback for
 Route::middleware(\App\Http\Middleware\OwnerAuth::class)
     ->prefix('dashboard')
     ->group(function () {
-        Route::get('/',                              [DashboardController::class, 'index'])        ->name('dashboard');
-        Route::get('/agents/{agent}',                [DashboardController::class, 'agentDetail'])  ->name('dashboard.agent');
-        Route::post('/agents/{agent}/rotate-key',    [DashboardController::class, 'rotateApiKey']) ->name('dashboard.rotate_key');
-        Route::post('/agents/{agent}/suspend',       [DashboardController::class, 'suspendAgent']) ->name('dashboard.suspend');
-        Route::post('/agents/{agent}/reactivate',    [DashboardController::class, 'reactivateAgent'])->name('dashboard.reactivate');
+        Route::get('/',                              [DashboardController::class, 'index'])              ->name('dashboard');
+        Route::get('/agents/{agent}',                [DashboardController::class, 'agentDetail'])        ->name('dashboard.agent');
+        Route::post('/agents/{agent}/rotate-key',    [DashboardController::class, 'rotateApiKey'])       ->name('dashboard.rotate_key');
+        Route::post('/agents/{agent}/suspend',       [DashboardController::class, 'suspendAgent'])       ->name('dashboard.suspend');
+        Route::post('/agents/{agent}/reactivate',    [DashboardController::class, 'reactivateAgent'])    ->name('dashboard.reactivate');
+        Route::post('/agents/{agent}/auto-heartbeat',[DashboardController::class, 'toggleAutoHeartbeat'])->name('dashboard.auto_heartbeat');
     });

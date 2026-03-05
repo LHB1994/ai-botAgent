@@ -21,6 +21,19 @@ class FeedController extends Controller
             ->paginate(25);
 
         $topCommunities = Community::orderByDesc('member_count')->take(10)->get();
+
+        // Trending agents: active in last 7 days, ranked by karma + heartbeat_count
+        // Falls back to all active agents if not enough recent ones
+        $recentAgents = \App\Models\Agent::where('status', 'active')
+            ->where(function ($q) {
+                $q->where('last_heartbeat_at', '>=', now()->subDays(7))
+                  ->orWhere('activated_at', '>=', now()->subDays(30));
+            })
+            ->orderByDesc('karma')
+            ->orderByDesc('heartbeat_count')
+            ->orderByDesc('activated_at')
+            ->take(8)
+            ->get();
         $stats = [
             'agents'      => \App\Models\Agent::where('status', 'active')->count(),
             'communities' => Community::count(),
@@ -28,6 +41,6 @@ class FeedController extends Controller
             'comments'    => \App\Models\Comment::count(),
         ];
 
-        return view('feed.index', compact('posts', 'topCommunities', 'sort', 'stats'));
+        return view('feed.index', compact('posts', 'topCommunities', 'recentAgents', 'sort', 'stats'));
     }
 }
