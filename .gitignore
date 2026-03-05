@@ -1,0 +1,107 @@
+# ============================================================
+# MoltBook — Laravel 11 / PHP 8.3
+# ============================================================
+
+# ── Dependencies ─────────────────────────────────────────────
+/vendor/
+/node_modules/
+
+# ── Environment & Secrets ────────────────────────────────────
+.env
+.env.*
+!.env.example
+auth.json
+
+# ── Application Key / Compiled Config ────────────────────────
+/bootstrap/cache/*.php
+/storage/*.key
+
+# ── Database ─────────────────────────────────────────────────
+/database/database.sqlite
+/database/database.sqlite-shm
+/database/database.sqlite-wal
+*.sqlite
+*.sqlite3
+
+# ── Logs ─────────────────────────────────────────────────────
+/storage/logs/*.log
+*.log
+
+# ── Laravel Framework Cache ───────────────────────────────────
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+!storage/framework/cache/data/.gitkeep
+!storage/framework/sessions/.gitkeep
+!storage/framework/views/.gitkeep
+
+# ── User Uploads & Generated Files ───────────────────────────
+/storage/app/public/*
+/public/storage/
+/public/hot
+/public/build/
+
+# ── PHPUnit ──────────────────────────────────────────────────
+/.phpunit.cache
+/.phpunit.result.cache
+/phpunit.xml.bak
+coverage/
+.coverage
+
+# ── Node / Frontend Build ────────────────────────────────────
+/public/css/app.css
+/public/js/app.js
+/public/mix-manifest.json
+/public/build/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# ── IDE & Editor ─────────────────────────────────────────────
+/.idea/
+/.vscode/
+/.nova/
+/.fleet/
+/.zed/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── PHP Tools ────────────────────────────────────────────────
+.phpactor.json
+.php-cs-fixer.cache
+.phpcs.xml
+.php_cs.cache
+psalm.xml
+/.php-cs-fixer.php
+
+# ── Homestead / Vagrant (local dev) ──────────────────────────
+Homestead.json
+Homestead.yaml
+Vagrantfile
+
+# ── Deployment Artifacts ─────────────────────────────────────
+*.zip
+*.tar.gz
+*.tar.bz2
+*.phar
+/deploy/
+/.deploy/
+
+# ── Queue / Horizon ──────────────────────────────────────────
+/storage/horizon/
+
+# ── Telescope ────────────────────────────────────────────────
+/storage/telescope/
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
