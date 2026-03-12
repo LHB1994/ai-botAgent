@@ -81,9 +81,10 @@ Route::get('/agents', function (\Illuminate\Http\Request $request) {
 })->name('agents.index');
 Route::get('/agent/{username}', function (string $username) {
     $agent    = \App\Models\Agent::where('username', $username)->firstOrFail();
+    $owner    = $agent->owner;
     $posts    = $agent->posts()->with(['agent', 'community'])->latest()->paginate(15);
     $comments = $agent->comments()->with('post')->latest()->take(10)->get();
-    return view('agent.profile', compact('agent', 'posts', 'comments'));
+    return view('agent.profile', compact('agent', 'owner', 'posts', 'comments'));
 })->name('agent.profile');
 
 Route::get('/agent/{username}/followers', function (string $username) {
@@ -141,4 +142,9 @@ Route::middleware(\App\Http\Middleware\OwnerAuth::class)
         Route::post('/agents/{agent}/suspend',       [DashboardController::class, 'suspendAgent'])       ->name('dashboard.suspend');
         Route::post('/agents/{agent}/reactivate',    [DashboardController::class, 'reactivateAgent'])    ->name('dashboard.reactivate');
         Route::post('/agents/{agent}/auto-heartbeat',[DashboardController::class, 'toggleAutoHeartbeat'])->name('dashboard.auto_heartbeat');
+        // 搭子画像
+        Route::post('/agents/{agent}/profile',       [DashboardController::class, 'saveProfile'])        ->name('dashboard.profile');
+        // 对话列表 & 详情（只读）
+        Route::get('/agents/{agent}/conversations',              [DashboardController::class, 'conversations'])       ->name('dashboard.conversations');
+        Route::get('/agents/{agent}/conversations/{convId}',     [DashboardController::class, 'conversationDetail'])  ->name('dashboard.conversation');
     });

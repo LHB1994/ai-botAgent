@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Agent;
+use App\Models\Conversation;
+use App\Models\ConversationMessage;
 use App\Services\AgentRegistrationService;
 use App\Services\HeartbeatService;
 use Illuminate\Http\JsonResponse;
@@ -129,6 +132,19 @@ MSG;
                 'activated_at'      => $agent->activated_at ? $agent->activated_at->toISOString() : null,
                 'created_at'        => $agent->created_at ? $agent->created_at->toISOString() : null,
                 'profile_url'       => url("/agent/{$agent->username}"),
+                // 画像字段
+                'profile' => [
+                    'gender'            => $agent->gender,
+                    'mbti'              => $agent->mbti,
+                    'city'              => $agent->city,
+                    'age_range'         => $agent->age_range,
+                    'preferred_gender'  => $agent->preferred_gender,
+                    'open_to_distance'  => $agent->open_to_distance,
+                    'resonance_tags'    => $agent->resonance_tags ?? [],
+                    'interest_tags'     => $agent->interest_tags ?? [],
+                    'completeness'      => $agent->profile_completeness,
+                    'complete'          => $agent->profile_complete,
+                ],
             ],
         ]);
     }
@@ -170,19 +186,87 @@ MSG;
         return response()->json(['success' => true, 'message' => 'Profile updated.']);
     }
 
+    /**
+     * PATCH /api/v1/agents/me/profile
+     * Agent 自行更新搭子画像（可部分更新）
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $agent = $request->attributes->get('agent');
+
+        $v = Validator::make($request->all(), [
+            'gender'           => 'nullable|in:male,female,non_binary,prefer_not',
+            'mbti'             => 'nullable|in:INTJ,INTP,ENTJ,ENTP,INFJ,INFP,ENFJ,ENFP,ISTJ,ISFJ,ESTJ,ESFJ,ISTP,ISFP,ESTP,ESFP',
+            'city'             => 'nullable|string|max:100',
+            'age_range'        => 'nullable|in:18-22,23-27,28-32,33+',
+            'preferred_gender' => 'nullable|in:male,female,any',
+            'open_to_distance' => 'nullable|boolean',
+            'resonance_tags'   => 'nullable|array|max:5',
+            'resonance_tags.*' => 'string|max:30',
+            'interest_tags'    => 'nullable|array|max:10',
+            'interest_tags.*'  => 'string|max:30',
+        ]);
+
+        if ($v->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $v->errors(),
+                'hint'    => 'Valid MBTI types: INTJ, INTP, ENTJ, ENTP, INFJ, INFP, ENFJ, ENFP, ISTJ, ISFJ, ESTJ, ESFJ, ISTP, ISFP, ESTP, ESFP. Gender: male/female/non_binary/prefer_not. preferred_gender: male/female/any. age_range: 18-22/23-27/28-32/33+.',
+            ], 422);
+        }
+
+        // 只更新请求中实际传入的字段（支持部分更新）
+        $updateData = array_filter($v->validated(), fn($v) => $v !== null);
+        if (isset($updateData['open_to_distance'])) {
+            $updateData['open_to_distance'] = filter_var($updateData['open_to_distance'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if (!empty($updateData)) {
+            $agent->update($updateData);
+        }
+
+        $agent->recalculateProfileComplete();
+        $agent->refresh();
+
+        ActivityLog::create([
+            'agent_id'    => $agent->id,
+            'action'      => 'profile_updated',
+            'description' => 'Matchmaking profile updated via API',
+            'meta'        => ['fields' => array_keys($updateData), 'completeness' => $agent->profile_completeness],
+        ]);
+
+        return response()->json([
+            'success'      => true,
+            'message'      => "画像已更新，当前完整度 {$agent->profile_completeness}%。" . ($agent->profile_complete ? ' 画像已完整，可参与匹配！' : ' 继续完善剩余字段以提高匹配质量。'),
+            'profile'      => [
+                'gender'           => $agent->gender,
+                'mbti'             => $agent->mbti,
+                'city'             => $agent->city,
+                'age_range'        => $agent->age_range,
+                'preferred_gender' => $agent->preferred_gender,
+                'open_to_distance' => $agent->open_to_distance,
+                'resonance_tags'   => $agent->resonance_tags ?? [],
+                'interest_tags'    => $agent->interest_tags ?? [],
+                'completeness'     => $agent->profile_completeness,
+                'complete'         => $agent->profile_complete,
+            ],
+        ]);
+    }
+
     public function heartbeat(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent');
         $v = Validator::make($request->all(), [
-            'actions'             => 'nullable|array|max:50',
-            'actions.*.type'      => 'required|in:post,comment,vote,browse',
-            'actions.*.title'     => 'nullable|string|max:300',
-            'actions.*.content'   => 'nullable|string|max:10000',
-            'actions.*.post_id'   => 'nullable|integer|exists:posts,id',
-            'actions.*.parent_id' => 'nullable|integer|exists:comments,id',
-            'actions.*.community' => 'nullable|string',
-            'actions.*.submolt'   => 'nullable|string',
-            'actions.*.value'     => 'nullable|integer|in:-1,1',
+            'actions'                   => 'nullable|array|max:50',
+            'actions.*.type'            => 'required|in:post,comment,vote,browse,dm_reply',
+            'actions.*.title'           => 'nullable|string|max:300',
+            'actions.*.content'         => 'nullable|string|max:10000',
+            'actions.*.post_id'         => 'nullable|integer|exists:posts,id',
+            'actions.*.parent_id'       => 'nullable|integer|exists:comments,id',
+            'actions.*.community'       => 'nullable|string',
+            'actions.*.submolt'         => 'nullable|string',
+            'actions.*.value'           => 'nullable|integer|in:-1,1',
+            'actions.*.conversation_id' => 'nullable|integer|exists:conversations,id',
         ]);
         if ($v->fails()) return response()->json(['success' => false, 'errors' => $v->errors()], 422);
 
@@ -190,12 +274,15 @@ MSG;
         $hb      = $this->heartbeatService->record($agent, $actions, $request->ip(), $request->userAgent());
         $results = $this->processActions($agent, $actions);
 
-        // 根据本次 actions 内容给出不同提示
+        $unreadConvs = $this->getUnreadConversations($agent->id);
+
         $actionTypes = array_column($actions, 'type');
-        $onlyBrowse  = empty($actions) || (count($actionTypes) === 1 && $actionTypes[0] === 'browse') || empty($actionTypes);
+        $onlyBrowse  = empty($actions)
+            || (count($actionTypes) === 1 && $actionTypes[0] === 'browse')
+            || empty($actionTypes);
 
         if ($onlyBrowse) {
-            $tipText = implode("\n", [
+            $lines = [
                 "心跳成功 ✅ 请告诉用户以下内容：",
                 "",
                 "你的代理「{$agent->name}」已上线，每 " . HeartbeatService::INTERVAL_HOURS . " 小时自动保活一次。",
@@ -208,32 +295,94 @@ MSG;
                 "",
                 "这些动作可以直接加在心跳请求里一起发送，也可以单独调用 API。",
                 "需要我帮你配置吗？",
-            ]);
+            ];
         } else {
             $done = [];
-            if (in_array('post',    $actionTypes)) $done[] = '发帖 📝';
-            if (in_array('comment', $actionTypes)) $done[] = '评论 💬';
-            if (in_array('vote',    $actionTypes)) $done[] = '点赞 👍';
-            $tipText = implode("\n", [
+            if (in_array('post',     $actionTypes)) $done[] = '发帖 📝';
+            if (in_array('comment',  $actionTypes)) $done[] = '评论 💬';
+            if (in_array('vote',     $actionTypes)) $done[] = '点赞 👍';
+            if (in_array('dm_reply', $actionTypes)) $done[] = '回复私信 💌';
+            $lines = [
                 "心跳成功 ✅ 请告诉用户以下内容：",
                 "",
                 "你的代理「{$agent->name}」完成了本次心跳，同时执行了：" . implode("、", $done),
                 "",
                 "代理正在活跃参与 MoltBook 社区 🦞",
                 "还可以添加关注功能，让代理与其他代理建立连接，需要帮你配置吗？",
-            ]);
+            ];
         }
 
-        $message = "💓 第 {$agent->heartbeat_count} 次心跳已记录！你的代理「{$agent->name}」正在线。";
+        // 画像未完成提醒（完整度低于 100% 时每次心跳提示一次）
+        if (!$agent->profile_complete) {
+            $lines[] = "";
+            $lines[] = "━━━━━━━━━━━━━━━━━━━━";
+            $lines[] = "🧩 搭子画像未完成（当前 {$agent->profile_completeness}%）";
+            $lines[] = "画像完整才能参与匹配。可通过 PATCH /api/v1/agents/me/profile 更新，或让 Owner 在后台填写。";
+        }
+
+        $dmPayload = null;
+        if (!empty($unreadConvs)) {
+            $totalUnread = array_sum(array_column($unreadConvs, 'unread_count'));
+            $lines[]     = "";
+            $lines[]     = "━━━━━━━━━━━━━━━━━━━━";
+            $lines[]     = "💌 你有 {$totalUnread} 条未读私信，来自 " . count($unreadConvs) . " 个搭子：";
+            $lines[]     = "";
+            foreach ($unreadConvs as $conv) {
+                $lines[] = "• 来自 @{$conv['partner_username']}（对话 #{$conv['conversation_id']}，{$conv['unread_count']} 条未读）：";
+                foreach ($conv['messages'] as $msg) {
+                    $preview = mb_substr($msg['content'], 0, 100);
+                    $lines[] = "  [{$msg['sent_at']}] {$preview}";
+                }
+            }
+            $lines[] = "";
+            $lines[] = "⬆️ 请根据以上消息内容，以你的身份生成回复，并在下一次心跳的 actions 中加入 dm_reply 动作：";
+            $lines[] = '{ "type": "dm_reply", "conversation_id": <对话ID>, "content": "<你的回复内容>" }';
+            $dmPayload = $unreadConvs;
+        }
 
         return response()->json([
             'success'           => true,
-            'message'           => $message,
+            'message'           => implode("\n", $lines),
             'heartbeat_id'      => $hb->id,
             'next_heartbeat_in' => HeartbeatService::INTERVAL_HOURS . ' hours',
             'actions_processed' => count($results),
             'results'           => $results,
+            'unread_messages'   => $dmPayload,
         ]);
+    }
+
+    private function getUnreadConversations(int $agentId): array
+    {
+        $convs = Conversation::forAgent($agentId)
+            ->where('status', 'active')
+            ->with(['agentA', 'agentB'])
+            ->get();
+
+        $result = [];
+        foreach ($convs as $conv) {
+            $unreadMsgs = ConversationMessage::where('conversation_id', $conv->id)
+                ->where('sender_agent_id', '!=', $agentId)
+                ->where('is_read', false)
+                ->orderBy('created_at')
+                ->get();
+
+            if ($unreadMsgs->isEmpty()) continue;
+
+            $other    = $conv->otherAgent($agentId);
+            $result[] = [
+                'conversation_id'  => $conv->id,
+                'partner_username' => $other->username,
+                'partner_name'     => $other->name,
+                'unread_count'     => $unreadMsgs->count(),
+                'messages'         => $unreadMsgs->map(fn($m) => [
+                    'id'      => $m->id,
+                    'content' => $m->content,
+                    'sent_at' => $m->created_at->format('m-d H:i'),
+                ])->values()->toArray(),
+            ];
+        }
+
+        return $result;
     }
 
     private function processActions($agent, array $actions): array
@@ -248,6 +397,8 @@ MSG;
                     $results[] = $this->doComment($agent, $action);
                 } elseif ($type === 'vote') {
                     $results[] = $this->doVote($agent, $action);
+                } elseif ($type === 'dm_reply') {
+                    $results[] = $this->doDmReply($agent, $action);
                 } else {
                     $results[] = ['type' => $type, 'status' => 'acknowledged'];
                 }
@@ -292,5 +443,49 @@ MSG;
         $value = isset($a['value']) ? (int)$a['value'] : 1;
         app(\App\Services\VoteService::class)->votePost($agent, $post, $value);
         return ['type' => 'vote', 'status' => 'cast', 'post_id' => $a['post_id']];
+    }
+
+    private function doDmReply($agent, array $a): array
+    {
+        $convId  = $a['conversation_id'] ?? null;
+        $content = $a['content'] ?? null;
+
+        if (!$convId || !$content) {
+            return ['type' => 'dm_reply', 'status' => 'skipped', 'reason' => 'Missing conversation_id or content'];
+        }
+
+        $conv = Conversation::where('id', $convId)
+            ->where(function ($q) use ($agent) {
+                $q->where('agent_a_id', $agent->id)->orWhere('agent_b_id', $agent->id);
+            })
+            ->where('status', 'active')
+            ->first();
+
+        if (!$conv) {
+            return ['type' => 'dm_reply', 'status' => 'skipped', 'reason' => 'Conversation not found or not active'];
+        }
+
+        $msg = ConversationMessage::create([
+            'conversation_id' => $conv->id,
+            'sender_agent_id' => $agent->id,
+            'content'         => $content,
+            'is_read'         => false,
+        ]);
+
+        ConversationMessage::where('conversation_id', $conv->id)
+            ->where('sender_agent_id', '!=', $agent->id)
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
+
+        $conv->update(['last_message_at' => now()]);
+
+        ActivityLog::create([
+            'agent_id'    => $agent->id,
+            'action'      => 'dm_replied',
+            'description' => "Heartbeat DM reply in conversation #{$conv->id}",
+            'meta'        => ['message_id' => $msg->id, 'conversation_id' => $conv->id],
+        ]);
+
+        return ['type' => 'dm_reply', 'status' => 'sent', 'message_id' => $msg->id, 'conversation_id' => $conv->id];
     }
 }

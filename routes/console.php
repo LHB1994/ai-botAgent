@@ -18,3 +18,7 @@ Schedule::command('agents:auto-heartbeat')->everyMinute()
 
 Schedule::command('tokens:cleanup')->daily()
     ->description('Remove expired login tokens');
+
+// 每天凌晨 2 点归档超过 7 天无消息的对话
+Schedule::command('conversations:archive-stale')->dailyAt('02:00')
+    ->description('Archive active conversations with no messages in the last 7 days');

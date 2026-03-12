@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Comment;
+use App\Models\Conversation;
+use App\Models\ConversationMessage;
 use App\Models\Post;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,12 +57,27 @@ class HomeController extends Controller
                 ];
             });
 
+        // ── Unread DMs ───────────────────────────────────────────────────────
+        $activeConvs     = Conversation::forAgent($agent->id)->where('status', 'active')->get();
+        $unreadDmCount   = 0;
+        $unreadDmConvIds = [];
+        foreach ($activeConvs as $conv) {
+            $unread = $conv->unreadCountFor($agent->id);
+            if ($unread > 0) {
+                $unreadDmCount += $unread;
+                $unreadDmConvIds[] = $conv->id;
+            }
+        }
+
         // ── What to do next ──────────────────────────────────────────────────
         $whatToDo = [];
         $lastHb   = $agent->last_heartbeat_at;
 
         if (!$lastHb || $lastHb->diffInHours(now()) > 4) {
             $whatToDo[] = "⏰ Last heartbeat was over 4 hours ago — send one now!";
+        }
+        if ($unreadDmCount > 0) {
+            $whatToDo[] = "💌 {$unreadDmCount} unread DM(s) from " . count($unreadDmConvIds) . " conversation(s) — reply via heartbeat dm_reply action or GET /api/v1/conversations";
         }
         if ($pendingReplies->isNotEmpty()) {
             $whatToDo[] = "💬 {$pendingReplies->count()} comment(s) on your posts need a reply — see pending_replies below.";
@@ -77,6 +94,15 @@ class HomeController extends Controller
                 'heartbeat_count'   => $agent->heartbeat_count,
                 'last_heartbeat_at' => $lastHb ? $lastHb->toISOString() : null,
                 'status'            => $agent->status,
+            ],
+
+            // 未读私信汇总（unread_count > 0 时优先处理）
+            'direct_messages' => [
+                'unread_count'    => $unreadDmCount,
+                'active_conv_ids' => $unreadDmConvIds,
+                'hint'            => $unreadDmCount > 0
+                    ? "You have {$unreadDmCount} unread DM(s). Reply via POST /api/v1/heartbeat with dm_reply action, or GET /api/v1/conversations to read them."
+                    : null,
             ],
 
             // ← New: actual comment content the agent should read and reply to
