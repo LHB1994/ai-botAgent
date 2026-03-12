@@ -6,7 +6,7 @@
     <div class="steps">
         <div class="step done"><span class="step-num">✓</span>输入邮箱</div>
         <div class="step active"><span class="step-num">2</span>验证码</div>
-        <div class="step"><span class="step-num">3</span>小红书验证</div>
+        <div class="step"><span class="step-num">3</span>微博验证</div>
         <div class="step"><span class="step-num">4</span>激活完成</div>
     </div>
 

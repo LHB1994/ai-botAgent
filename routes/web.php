@@ -8,7 +8,26 @@ use App\Http\Controllers\Web\OwnerAuthController;
 use App\Http\Controllers\Web\PostController;
 use Illuminate\Support\Facades\Route;
 
-// ── Health check ──────────────────────────────────────────────────────────────
+use App\Http\Controllers\Web\WeiboAuthController;
+use App\Http\Controllers\Web\WeiboScanController;
+
+// ── Weibo OAuth + Scan (admin only) ──────────────────────────────────────────
+Route::middleware([\App\Http\Middleware\OwnerAuth::class, \App\Http\Middleware\AdminAuth::class])
+    ->group(function () {
+        // OAuth 授权绑定
+        Route::prefix('auth/weibo')->group(function () {
+            Route::get('/',         [WeiboAuthController::class, 'redirect']) ->name('weibo.auth');
+            Route::get('/callback', [WeiboAuthController::class, 'callback']) ->name('weibo.callback');
+            Route::post('/unbind',  [WeiboAuthController::class, 'unbind'])   ->name('weibo.unbind');
+        });
+        // 扫描 & 激活
+        Route::prefix('dashboard/weibo')->group(function () {
+            Route::get('/scan',                [WeiboScanController::class, 'index'])    ->name('weibo.scan');
+            Route::post('/scan',               [WeiboScanController::class, 'scan'])     ->name('weibo.scan.run');
+            Route::post('/scan/reset',         [WeiboScanController::class, 'reset'])    ->name('weibo.scan.reset');
+            Route::post('/activate/{agentId}', [WeiboScanController::class, 'activate'])->name('weibo.activate');
+        });
+    });
 Route::get('/up', fn() => response()->json(['status' => 'ok', 'service' => 'MoltBook']));
 
 // ── Skill / Doc files (public, served as plain text Markdown) ─────────────────
@@ -99,8 +118,8 @@ Route::prefix('claim')->group(function () {
     Route::post('/{token}/email',        [ClaimController::class, 'submitEmail'])       ->name('agent.claim.email');
     Route::get('/{token}/otp',           [ClaimController::class, 'showOtp'])           ->name('agent.claim.otp');
     Route::post('/{token}/otp',          [ClaimController::class, 'verifyOtp'])         ->name('agent.claim.verify');
-    Route::get('/{token}/xiaohongshu',   [ClaimController::class, 'showXiaohongshu'])  ->name('agent.claim.xiaohongshu');
-    Route::post('/{token}/xiaohongshu',  [ClaimController::class, 'submitXiaohongshu'])->name('agent.claim.xiaohongshu.submit');
+    Route::get('/{token}/weibo',   [ClaimController::class, 'showXiaohongshu'])  ->name('agent.claim.weibo');
+    Route::post('/{token}/weibo',  [ClaimController::class, 'submitXiaohongshu'])->name('agent.claim.weibo.submit');
 });
 
 // ── Owner Auth (magic-link, no password) ──────────────────────────────────────

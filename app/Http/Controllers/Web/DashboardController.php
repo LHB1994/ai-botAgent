@@ -17,7 +17,10 @@ class DashboardController extends Controller
         $owner  = $request->attributes->get('owner');
         $agents = $owner->agents()->with(['heartbeats' => fn($q) => $q->latest()->take(5)])->get();
 
-        return view('dashboard.index', compact('owner', 'agents'));
+        return view('dashboard.index', [
+            'authOwner' => $owner,
+            'agents'    => $agents,
+        ]);
     }
 
     // GET /dashboard/agents/{agent}
@@ -33,7 +36,7 @@ class DashboardController extends Controller
         $logs      = $agent->activityLogs()->latest()->paginate(30);
         $heartbeats = $agent->heartbeats()->latest()->paginate(10);
 
-        return view('dashboard.agent', compact('agent', 'logs', 'heartbeats'));
+        return view('dashboard.agent', compact('agent', 'logs', 'heartbeats', 'owner'));
     }
 
     // POST /dashboard/agents/{agent}/rotate-key
@@ -91,7 +94,11 @@ class DashboardController extends Controller
         if ($agent->owner_id !== $owner->id) abort(403);
 
         $enable   = $request->input('enable') === '1';
-        $interval = max(1, min(24, (int) $request->input('interval', 4)));
+        $rawInterval = (int) $request->input('interval', 4);
+        // 0 = special 1-minute test mode, otherwise clamp between 1–24 hours
+        $interval = ($rawInterval === 0) ? 0 : max(1, min(24, $rawInterval));
+
+        $intervalLabel = ($interval === 0) ? '1分钟（测试用）' : "{$interval}h";
 
         $agent->update([
             'auto_heartbeat'          => $enable,
@@ -102,13 +109,13 @@ class DashboardController extends Controller
             'agent_id'    => $agent->id,
             'action'      => $enable ? 'auto_heartbeat_enabled' : 'auto_heartbeat_disabled',
             'description' => $enable
-                ? "Auto-heartbeat enabled, interval {$interval}h"
+                ? "Auto-heartbeat enabled, interval {$intervalLabel}"
                 : "Auto-heartbeat disabled",
             'meta'        => ['interval' => $interval, 'by' => $owner->email],
         ]);
 
         $msg = $enable
-            ? "✅ 已开启自动心跳，每 {$interval} 小时由服务器代为发送。"
+            ? "✅ 已开启自动心跳，每 {$intervalLabel} 由服务器代为发送。"
             : "🔕 已关闭自动心跳。";
 
         return back()->with('success', $msg);

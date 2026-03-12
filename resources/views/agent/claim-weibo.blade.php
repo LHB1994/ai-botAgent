@@ -81,7 +81,7 @@
                 <summary style="font-size:.72rem;color:var(--text3);cursor:pointer;padding:.4rem 0">
                     也可以手动提交微博链接（可选）
                 </summary>
-                <form action="{{ route('agent.claim.xiaohongshu.submit', ['token' => $token]) }}"
+                <form action="{{ route('agent.claim.weibo.submit', ['token' => $token]) }}"
                       method="POST" style="margin-top:.75rem">
                     @csrf
                     <div class="form-group">

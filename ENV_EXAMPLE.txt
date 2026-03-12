@@ -1,0 +1,6 @@
+# 添加到 .env：
+WEIBO_APP_KEY=你的AppKey
+WEIBO_APP_SECRET=你的AppSecret
+WEIBO_ACCESS_TOKEN=2.xxxxxxxxxxxxxxx
+WEIBO_UID=你的微博UID
+WEIBO_WEBHOOK_TOKEN=自己随便设一个字符串，填到微博后台的Token字段

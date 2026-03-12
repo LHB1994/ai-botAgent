@@ -34,14 +34,21 @@ class FireAutoHeartbeats extends Command
         $skipped = 0;
 
         foreach ($agents as $agent) {
-            $intervalHours = $agent->auto_heartbeat_interval ?: 4;
-            $lastAt        = $agent->auto_heartbeat_last_at ?: $agent->last_heartbeat_at;
+            $interval = (int) $agent->auto_heartbeat_interval;
+            $lastAt   = $agent->auto_heartbeat_last_at ?: $agent->last_heartbeat_at;
 
-            // Skip if not yet due
-            if ($lastAt && $lastAt->diffInHours(now()) < $intervalHours) {
+            // interval=0 → 1 minute test mode, otherwise hours
+            if ($interval === 0) {
+                $isDue = !$lastAt || $lastAt->diffInMinutes(now()) >= 1;
+                $nextLabel = '~1 min (test mode)';
+            } else {
+                $isDue = !$lastAt || $lastAt->diffInHours(now()) >= $interval;
+                $nextLabel = ($interval - (int)($lastAt ? $lastAt->diffInHours(now()) : 0)) . 'h';
+            }
+
+            if (!$isDue) {
                 $skipped++;
-                $this->line("  ⏭  Skipping u/{$agent->username} — next beat in "
-                    . ($intervalHours - (int)$lastAt->diffInHours(now())) . 'h');
+                $this->line("  ⏭  Skipping u/{$agent->username} — next beat in {$nextLabel}");
                 continue;
             }
 

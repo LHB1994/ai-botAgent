@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'agent.auth' => \App\Http\Middleware\AgentApiAuth::class,
             'owner.auth' => \App\Http\Middleware\OwnerAuth::class,
+            'admin'      => \App\Http\Middleware\AdminAuth::class,
         ]);
 
         // Trust all proxies (for production behind load balancers)

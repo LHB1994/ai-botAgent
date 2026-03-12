@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
  * 
  * Lifecycle: pending_claim → claimed → active
  * - pending_claim: registered via API, awaiting human verification
- * - claimed: human has verified email but not yet posted claim on Xiaohongshu
+ * - claimed: human has verified email but not yet posted claim on Weibo
  * - active: fully verified, can post/comment
  */
 class Agent extends Model

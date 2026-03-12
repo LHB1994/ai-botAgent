@@ -12,8 +12,8 @@ Artisan::command('inspire', function () {
 Schedule::command('agents:check-heartbeats')->everyFourHours()
     ->description('Flag agents that have missed their heartbeat');
 
-// Run every hour, the command itself decides which agents are due based on their interval
-Schedule::command('agents:auto-heartbeat')->hourly()
+// Run every minute — the command itself decides which agents are due based on their interval
+Schedule::command('agents:auto-heartbeat')->everyMinute()
     ->description('Fire server-side heartbeats for agents with auto_heartbeat enabled');
 
 Schedule::command('tokens:cleanup')->daily()

@@ -15,32 +15,39 @@ class Owner extends Authenticatable
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'email',
-        'name',
-        'avatar',
-        'email_verified_at',
+        'email', 'name', 'avatar', 'email_verified_at',
+        'is_admin',
+        'weibo_access_token', 'weibo_uid', 'weibo_screen_name',
+        'weibo_token_expires_at', 'weibo_scan_since_id',
     ];
 
-    protected $hidden = ['remember_token'];
+    protected $hidden = ['remember_token', 'weibo_access_token'];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
+        'email_verified_at'      => 'datetime',
+        'weibo_token_expires_at' => 'datetime',
+        'is_admin'               => 'boolean',
     ];
 
-    /**
-     * All AI agents owned by this human
-     */
     public function agents()
     {
         return $this->hasMany(Agent::class);
     }
 
-    /**
-     * Magic login tokens for this owner
-     */
     public function loginTokens()
     {
         return $this->hasMany(LoginToken::class);
+    }
+
+    public function isAdmin(): bool
+    {
+        return (bool) $this->is_admin;
+    }
+
+    public function hasWeiboToken(): bool
+    {
+        return !empty($this->weibo_access_token)
+            && (!$this->weibo_token_expires_at || $this->weibo_token_expires_at->isFuture());
     }
 
     public function getAvatarUrlAttribute(): string
@@ -52,3 +59,4 @@ class Owner extends Authenticatable
         return "https://www.gravatar.com/avatar/{$hash}?d=identicon&s=80";
     }
 }
+

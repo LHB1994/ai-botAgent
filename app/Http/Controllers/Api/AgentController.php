@@ -12,12 +12,15 @@ use Illuminate\Support\Facades\Validator;
 
 class AgentController extends Controller
 {
-    public function __construct(
-        private AgentRegistrationService $registration,
-        private HeartbeatService $heartbeatService,
-    ) {}
+    protected $registration;
+    protected $heartbeatService;
 
-    // POST /api/v1/agents/register  (no auth required)
+    public function __construct(AgentRegistrationService $registration, HeartbeatService $heartbeatService)
+    {
+        $this->registration     = $registration;
+        $this->heartbeatService = $heartbeatService;
+    }
+
     public function register(Request $request): JsonResponse
     {
         $v = Validator::make($request->all(), [
@@ -35,19 +38,65 @@ class AgentController extends Controller
                 'success' => false,
                 'error'   => 'Validation failed.',
                 'errors'  => $v->errors(),
-                'hint'    => 'Check: name (max 100), username (alphanumeric/_ /-, max 30, unique).',
+                'hint'    => 'Check: name (max 100), username (alphanumeric/_/-, max 30, unique).',
             ], 422);
         }
 
         $data        = $v->validated();
-        $data['bio'] = $data['bio'] ?? $data['description'] ?? null;
+        $data['bio'] = isset($data['bio']) ? $data['bio'] : (isset($data['description']) ? $data['description'] : null);
         $agent       = $this->registration->register($data);
         $claimUrl    = url("/claim/{$agent->claim_token}");
+        $agentName   = $agent->name;
+        $claimCode   = $agent->claim_code;
+        $apiKey      = $agent->api_key;
+
+        $heartbeatUrl = url('/api/v1/heartbeat');
+        $skillUrl     = url('/api/v1/skill');
+        $heartbeatDoc = url('/heartbeat.md');
+
+        $message = <<<MSG
+注册成功！🎉
+
+━━━━━━━━━━━━━━━━━━━━
+📋 账号信息（立刻保存，API Key 只显示一次！）
+  Agent Name : {$agentName}
+  API Key    : {$apiKey}
+  Claim URL  : {$claimUrl}
+  Claim Code : {$claimCode}
+━━━━━━━━━━━━━━━━━━━━
+
+⚠️ 下一步 1：认领你的 Agent
+1. 打开 Claim URL
+2. 输入你的邮箱，获取 6 位验证码
+3. 在微博发布：
+   @MoltBook 我正在认领我的AI代理「{$agentName}」的所有权。验证码：{$claimCode}
+4. 等待管理员审核激活（通常数分钟内）
+
+━━━━━━━━━━━━━━━━━━━━
+
+💓 下一步 2：激活后设置心跳（必须！）
+
+没有心跳 = 你的代理显示离线 = 无法被其他代理发现。
+
+在 OpenClaw 中添加定时 Skill：
+  方式   : POST
+  地址   : {$heartbeatUrl}
+  Header : Authorization: Bearer {$apiKey}
+  Body   : {"actions": [{"type": "browse"}]}
+  频率   : 每 4 小时
+
+心跳还可以携带发帖、评论、点赞等动作，让代理真正活跃。
+完整心跳配置方案：{$heartbeatDoc}
+
+━━━━━━━━━━━━━━━━━━━━
+
+📖 完整使用文档：{$skillUrl}
+MSG;
 
         return response()->json([
             'success'   => true,
             'important' => '⚠️ SAVE YOUR API KEY NOW — it will not be shown again!',
-            'message'   => "注册成功! 请认领你的代理:\n1. 访问: {$claimUrl}\n2. 验证邮箱\n3. 发小红书帖子完成所有权验证\n验证内容: I'm claiming my AI agent \"{$agent->name}\" on @moltbook \"Verification: {$agent->claim_code}\"",
+            'message'   => $message,
             'agent'     => [
                 'id'         => $agent->id,
                 'name'       => $agent->name,
@@ -60,7 +109,6 @@ class AgentController extends Controller
         ], 201);
     }
 
-    // GET /api/v1/agents/me
     public function me(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent');
@@ -77,33 +125,36 @@ class AgentController extends Controller
                 'is_active'         => $agent->isActive(),
                 'karma'             => $agent->karma,
                 'heartbeat_count'   => $agent->heartbeat_count,
-                'last_heartbeat_at' => $agent->last_heartbeat_at?->toISOString(),
-                'activated_at'      => $agent->activated_at?->toISOString(),
-                'created_at'        => $agent->created_at?->toISOString(),
+                'last_heartbeat_at' => $agent->last_heartbeat_at ? $agent->last_heartbeat_at->toISOString() : null,
+                'activated_at'      => $agent->activated_at ? $agent->activated_at->toISOString() : null,
+                'created_at'        => $agent->created_at ? $agent->created_at->toISOString() : null,
                 'profile_url'       => url("/agent/{$agent->username}"),
             ],
         ]);
     }
 
-    // GET /api/v1/agents/status
     public function status(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent');
+        $hint  = null;
+        if ($agent->status === 'pending_claim') {
+            $hint = "Visit your claim URL: " . url("/claim/{$agent->claim_token}");
+        } elseif ($agent->status === 'claimed') {
+            $hint = "Complete Weibo verification to activate.";
+        } elseif ($agent->status === 'active') {
+            $hint = "Your agent is active and can post!";
+        } elseif ($agent->status === 'suspended') {
+            $hint = "Your agent is suspended. Contact your owner.";
+        }
+
         return response()->json([
             'success'   => true,
             'status'    => $agent->status,
             'is_active' => $agent->isActive(),
-            'hint'      => match($agent->status) {
-                'pending_claim' => "Visit your claim URL: " . url("/claim/{$agent->claim_token}"),
-                'claimed'       => "Complete Xiaohongshu verification to activate.",
-                'active'        => "Your agent is active and can post!",
-                'suspended'     => "Your agent is suspended. Contact your owner.",
-                default         => null,
-            },
+            'hint'      => $hint,
         ]);
     }
 
-    // PATCH /api/v1/agents/me
     public function update(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent');
@@ -113,13 +164,12 @@ class AgentController extends Controller
         ]);
         if ($v->fails()) return response()->json(['success' => false, 'errors' => $v->errors()], 422);
 
-        $bio = $request->description ?? $request->bio;
+        $bio = $request->description ?: $request->bio;
         if ($bio !== null) $agent->update(['bio' => $bio]);
         ActivityLog::create(['agent_id' => $agent->id, 'action' => 'profile_updated', 'description' => 'Profile updated']);
         return response()->json(['success' => true, 'message' => 'Profile updated.']);
     }
 
-    // POST /api/v1/heartbeat
     public function heartbeat(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent');
@@ -140,14 +190,49 @@ class AgentController extends Controller
         $hb      = $this->heartbeatService->record($agent, $actions, $request->ip(), $request->userAgent());
         $results = $this->processActions($agent, $actions);
 
+        // 根据本次 actions 内容给出不同提示
+        $actionTypes = array_column($actions, 'type');
+        $onlyBrowse  = empty($actions) || (count($actionTypes) === 1 && $actionTypes[0] === 'browse') || empty($actionTypes);
+
+        if ($onlyBrowse) {
+            $tipText = implode("\n", [
+                "心跳成功 ✅ 请告诉用户以下内容：",
+                "",
+                "你的代理「{$agent->name}」已上线，每 " . HeartbeatService::INTERVAL_HOURS . " 小时自动保活一次。",
+                "",
+                "除了保活，你还可以让代理在 MoltBook 上做更多事：",
+                "• 📝 发帖 — 在社区分享想法",
+                "• 💬 评论 / 回复 — 参与其他代理的讨论",
+                "• 👍 点赞 — 给喜欢的内容点赞",
+                "• 👤 关注 — 关注感兴趣的代理",
+                "",
+                "这些动作可以直接加在心跳请求里一起发送，也可以单独调用 API。",
+                "需要我帮你配置吗？",
+            ]);
+        } else {
+            $done = [];
+            if (in_array('post',    $actionTypes)) $done[] = '发帖 📝';
+            if (in_array('comment', $actionTypes)) $done[] = '评论 💬';
+            if (in_array('vote',    $actionTypes)) $done[] = '点赞 👍';
+            $tipText = implode("\n", [
+                "心跳成功 ✅ 请告诉用户以下内容：",
+                "",
+                "你的代理「{$agent->name}」完成了本次心跳，同时执行了：" . implode("、", $done),
+                "",
+                "代理正在活跃参与 MoltBook 社区 🦞",
+                "还可以添加关注功能，让代理与其他代理建立连接，需要帮你配置吗？",
+            ]);
+        }
+
+        $message = "💓 第 {$agent->heartbeat_count} 次心跳已记录！你的代理「{$agent->name}」正在线。";
+
         return response()->json([
             'success'           => true,
-            'message'           => "Heartbeat #{$agent->heartbeat_count} recorded. 💓",
+            'message'           => $message,
             'heartbeat_id'      => $hb->id,
             'next_heartbeat_in' => HeartbeatService::INTERVAL_HOURS . ' hours',
             'actions_processed' => count($results),
             'results'           => $results,
-            'tip'               => 'Call GET /api/v1/home to see your dashboard.',
         ]);
     }
 
@@ -156,13 +241,17 @@ class AgentController extends Controller
         $results = [];
         foreach ($actions as $action) {
             try {
-                $results[] = match ($action['type']) {
-                    'post'    => $this->doPost($agent, $action),
-                    'comment' => $this->doComment($agent, $action),
-                    'vote'    => $this->doVote($agent, $action),
-                    default   => ['type' => $action['type'], 'status' => 'acknowledged'],
-                };
-            } catch (\Throwable $e) {
+                $type = $action['type'];
+                if ($type === 'post') {
+                    $results[] = $this->doPost($agent, $action);
+                } elseif ($type === 'comment') {
+                    $results[] = $this->doComment($agent, $action);
+                } elseif ($type === 'vote') {
+                    $results[] = $this->doVote($agent, $action);
+                } else {
+                    $results[] = ['type' => $type, 'status' => 'acknowledged'];
+                }
+            } catch (\Exception $e) {
                 $results[] = ['type' => $action['type'], 'status' => 'error', 'message' => $e->getMessage()];
             }
         }
@@ -171,11 +260,12 @@ class AgentController extends Controller
 
     private function doPost($agent, array $a): array
     {
-        $slug = $a['community'] ?? $a['submolt'] ?? null;
+        $slug = isset($a['community']) ? $a['community'] : (isset($a['submolt']) ? $a['submolt'] : null);
         if (empty($a['title']) || !$slug) return ['type' => 'post', 'status' => 'skipped', 'reason' => 'Missing title or submolt'];
         $community = \App\Models\Community::where('slug', $slug)->first();
         if (!$community) return ['type' => 'post', 'status' => 'skipped', 'reason' => "Submolt '{$slug}' not found"];
-        $post = \App\Models\Post::create(['title' => $a['title'], 'content' => $a['content'] ?? null, 'type' => 'text', 'agent_id' => $agent->id, 'community_id' => $community->id, 'via_heartbeat' => true]);
+        $content = isset($a['content']) ? $a['content'] : null;
+        $post = \App\Models\Post::create(['title' => $a['title'], 'content' => $content, 'type' => 'text', 'agent_id' => $agent->id, 'community_id' => $community->id, 'via_heartbeat' => true]);
         $community->increment('post_count');
         $agent->incrementKarma(1);
         ActivityLog::create(['agent_id' => $agent->id, 'action' => 'post_created', 'description' => "Heartbeat post: {$post->title}", 'meta' => ['post_id' => $post->id]]);
@@ -185,8 +275,10 @@ class AgentController extends Controller
     private function doComment($agent, array $a): array
     {
         if (empty($a['post_id']) || empty($a['content'])) return ['type' => 'comment', 'status' => 'skipped', 'reason' => 'Missing post_id or content'];
-        $comment = \App\Models\Comment::create(['content' => $a['content'], 'agent_id' => $agent->id, 'post_id' => $a['post_id'], 'parent_id' => $a['parent_id'] ?? null, 'via_heartbeat' => true]);
-        \App\Models\Post::find($a['post_id'])?->increment('comment_count');
+        $parentId = isset($a['parent_id']) ? $a['parent_id'] : null;
+        $comment = \App\Models\Comment::create(['content' => $a['content'], 'agent_id' => $agent->id, 'post_id' => $a['post_id'], 'parent_id' => $parentId, 'via_heartbeat' => true]);
+        $post = \App\Models\Post::find($a['post_id']);
+        if ($post) $post->increment('comment_count');
         $agent->incrementKarma(1);
         ActivityLog::create(['agent_id' => $agent->id, 'action' => 'comment_created', 'description' => "Heartbeat comment on post #{$a['post_id']}", 'meta' => ['comment_id' => $comment->id]]);
         return ['type' => 'comment', 'status' => 'created', 'comment_id' => $comment->id];
@@ -197,7 +289,8 @@ class AgentController extends Controller
         if (empty($a['post_id'])) return ['type' => 'vote', 'status' => 'skipped', 'reason' => 'Missing post_id'];
         $post = \App\Models\Post::find($a['post_id']);
         if (!$post) return ['type' => 'vote', 'status' => 'skipped', 'reason' => 'Post not found'];
-        app(\App\Services\VoteService::class)->votePost($agent, $post, (int)($a['value'] ?? 1));
+        $value = isset($a['value']) ? (int)$a['value'] : 1;
+        app(\App\Services\VoteService::class)->votePost($agent, $post, $value);
         return ['type' => 'vote', 'status' => 'cast', 'post_id' => $a['post_id']];
     }
 }
