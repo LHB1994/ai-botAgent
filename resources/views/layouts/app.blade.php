@@ -9,12 +9,12 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg:          #04040a;
-            --bg1:         #080812;
-            --bg2:         #0c0c18;
-            --bg3:         #101020;
-            --line:        #161630;
-            --line2:       #1e1e3a;
+            --bg:          #0e0e1a;
+            --bg1:         #13131f;
+            --bg2:         #18182a;
+            --bg3:         #1e1e32;
+            --line:        #252540;
+            --line2:       #2e2e50;
             --green:       #39ff8a;
             --green2:      #00cc6a;
             --glow:        rgba(57,255,138,.12);
@@ -23,9 +23,9 @@
             --red:         #ff4060;
             --cyan:        #00d4ff;
             --purple:      #9b59ff;
-            --text:        #d8d8f0;
-            --text2:       #7070a0;
-            --text3:       #3a3a60;
+            --text:        #eeeeff;
+            --text2:       #9090c0;
+            --text3:       #55557a;
             --font:        'IBM Plex Mono', monospace;
             --display:     'Outfit', sans-serif;
         }
@@ -649,6 +649,71 @@
             word-break: break-all;
         }
 
+        /* ── LOADING SPINNER ── */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+
+        .spinner {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border: 2px solid rgba(255,255,255,.2);
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin .6s linear infinite;
+            vertical-align: middle;
+        }
+
+        .btn.loading {
+            opacity: .7;
+            pointer-events: none;
+        }
+
+        .btn.loading .btn-text { display: none; }
+        .btn.loading::after {
+            content: '';
+            display: inline-block;
+            width: 11px; height: 11px;
+            border: 2px solid rgba(0,0,0,.2);
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin .6s linear infinite;
+        }
+
+        /* page transition overlay */
+        #page-loader {
+            position: fixed; inset: 0;
+            background: var(--bg);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .15s;
+        }
+
+        #page-loader.show { opacity: 1; pointer-events: all; }
+
+        #page-loader .loader-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .75rem;
+            color: var(--green);
+            font-size: .7rem;
+            letter-spacing: 2px;
+        }
+
+        #page-loader .loader-ring {
+            width: 32px; height: 32px;
+            border: 2px solid var(--line2);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+
+        .alert { animation: fadeIn .2s ease; }
+
         /* ── SCROLLBAR ── */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
@@ -665,6 +730,12 @@
     @stack('styles')
 </head>
 <body>
+    <div id="page-loader">
+        <div class="loader-inner">
+            <div class="loader-ring"></div>
+            <span>LOADING</span>
+        </div>
+    </div>
     <nav id="navbar">
         <div class="nav-wrap">
             <a href="{{ route('home') }}" class="logo">
@@ -720,6 +791,37 @@
 
     @stack('scripts')
     <script>
+    // Page loader
+    const loader = document.getElementById('page-loader');
+
+    // Show loader on navigation links (not buttons, not ajax)
+    document.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript') ||
+            href.startsWith('mailto') || a.target === '_blank') return;
+        a.addEventListener('click', e => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+            loader.classList.add('show');
+        });
+    });
+
+    // Hide loader when page is fully loaded
+    window.addEventListener('pageshow', () => loader.classList.remove('show'));
+
+    // Button loading state on form submit
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', () => {
+            const btn = form.querySelector('button[type=submit], .btn-submit');
+            if (btn) {
+                btn.classList.add('loading');
+                const txt = btn.querySelector('.btn-text') || btn;
+                if (!btn.querySelector('.btn-text')) {
+                    btn.innerHTML = `<span class="btn-text">${btn.innerHTML}</span>`;
+                }
+            }
+        });
+    });
+
     // Global vote handler
     function castVote(type, id, val, scoreEl) {
         fetch(`/${type}/${id}/vote`, {
