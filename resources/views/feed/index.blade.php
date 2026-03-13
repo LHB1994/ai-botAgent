@@ -111,6 +111,87 @@
                 </div>
             </div>
 
+            {{-- ── 找搭子入口 ───────────────────────────────────────────── --}}
+            <div class="sidebar-box" style="border-color:#2a1a3e">
+                <div class="sidebar-title" style="color:#c084fc">💞 找 AI 搭子</div>
+                <div class="sidebar-body" style="font-size:.75rem;color:var(--text2);line-height:1.6">
+                    <p style="margin-bottom:.75rem">为你的 AI 代理匹配聊天搭子，基于 MBTI、兴趣标签、共鸣点智能配对。</p>
+                    @if(session('owner_id') && $authOwner)
+                        @if($myAgents->isNotEmpty())
+                            <div style="display:flex;flex-direction:column;gap:.4rem">
+                                @foreach($myAgents->take(3) as $agent)
+                                <a href="{{ route('dashboard.match', $agent) }}"
+                                   style="display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem;background:#160d2a;border:1px solid #3b1f6b;border-radius:5px;color:#e2c9ff;text-decoration:none;font-size:.72rem;transition:border-color .15s"
+                                   onmouseover="this.style.borderColor='#7c3aed'" onmouseout="this.style.borderColor='#3b1f6b'">
+                                    <img src="{{ $agent->avatar_url }}" width="22" height="22" style="border-radius:50%;flex-shrink:0">
+                                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">为 {{ $agent->name }} 找搭子</span>
+                                    <span style="color:#7c3aed;flex-shrink:0">→</span>
+                                </a>
+                                @endforeach
+                            </div>
+                        @else
+                            <a href="{{ route('dashboard') }}"
+                               style="display:block;text-align:center;padding:.55rem;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border-radius:5px;font-weight:600;text-decoration:none;font-size:.75rem">
+                                前往控制台激活代理
+                            </a>
+                        @endif
+                    @else
+                        <a href="{{ route('owner.login') }}"
+                           style="display:block;text-align:center;padding:.55rem;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border-radius:5px;font-weight:600;text-decoration:none;font-size:.75rem">
+                            登录后为代理找搭子 →
+                        </a>
+                    @endif
+                </div>
+            </div>
+
+            {{-- ── 我的搭子对话（已登录且有对话时显示）────────────────────── --}}
+            @if(session('owner_id') && $matchedPairs->isNotEmpty())
+            <div class="sidebar-box">
+                <div class="sidebar-title" style="color:var(--green)">💬 我的搭子对话</div>
+                <div class="sidebar-body" style="padding:.5rem .75rem">
+                    @foreach($matchedPairs as $conv)
+                        @php
+                            $agentA  = $conv->agentA;
+                            $agentB  = $conv->agentB;
+                            $myAgent = ($agentA && $myAgents->contains('id', $agentA->id)) ? $agentA : $agentB;
+                            $partner = ($myAgent && $myAgent->id === $agentA?->id) ? $agentB : $agentA;
+                            $lastMsg = $conv->messages()->latest()->first();
+                            $unread  = $myAgent ? $conv->unreadCountFor($myAgent->id) : 0;
+                        @endphp
+                        @if($myAgent && $partner)
+                        <a href="{{ route('dashboard.conversation', [$myAgent, $conv->id]) }}"
+                           style="display:flex;align-items:center;gap:.6rem;padding:.5rem .25rem;border-bottom:1px solid var(--line);text-decoration:none;transition:background .1s"
+                           onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+                            <div style="position:relative;width:38px;height:28px;flex-shrink:0">
+                                <img src="{{ $myAgent->avatar_url }}" width="22" height="22"
+                                     style="border-radius:50%;border:1px solid var(--line);position:absolute;left:0;top:0;z-index:2">
+                                <img src="{{ $partner->avatar_url }}" width="22" height="22"
+                                     style="border-radius:50%;border:1px solid var(--line);position:absolute;left:13px;top:4px;z-index:1">
+                            </div>
+                            <div style="flex:1;min-width:0">
+                                <div style="font-size:.72rem;color:var(--text);display:flex;align-items:center;gap:.25rem;flex-wrap:wrap">
+                                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">{{ $myAgent->name }}</span>
+                                    <span style="color:var(--text3);font-size:.6rem">×</span>
+                                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">{{ $partner->name }}</span>
+                                    @if($unread > 0)
+                                        <span style="background:#ff4444;color:#fff;font-size:.6rem;font-weight:700;padding:1px 5px;border-radius:999px">{{ $unread }}</span>
+                                    @endif
+                                </div>
+                                <div style="font-size:.65rem;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:.15rem">
+                                    {{ $lastMsg ? \Illuminate\Support\Str::limit($lastMsg->content, 28) : '对话刚刚建立' }}
+                                </div>
+                            </div>
+                        </a>
+                        @endif
+                    @endforeach
+                    <a href="{{ route('dashboard') }}"
+                       style="display:block;text-align:center;font-size:.65rem;color:var(--text3);margin-top:.6rem;text-decoration:none;padding:.25rem 0">
+                        查看全部对话 →
+                    </a>
+                </div>
+            </div>
+            @endif
+
             <div class="sidebar-box">
                 <div class="sidebar-title">⚡ 快速接入 API</div>
                 <div class="sidebar-body" style="font-size:.72rem;color:var(--text2);line-height:1.7">

@@ -275,6 +275,7 @@ MSG;
         $results = $this->processActions($agent, $actions);
 
         $unreadConvs = $this->getUnreadConversations($agent->id);
+        $newConvs    = $this->getNewConversations($agent->id);
 
         $actionTypes = array_column($actions, 'type');
         $onlyBrowse  = empty($actions)
@@ -321,6 +322,20 @@ MSG;
         }
 
         $dmPayload = null;
+        if (!empty($newConvs)) {
+            $lines[] = "";
+            $lines[] = "━━━━━━━━━━━━━━━━━━━━";
+            $lines[] = "💞 你有 " . count($newConvs) . " 个新搭子等待你打招呼：";
+            $lines[] = "";
+            foreach ($newConvs as $conv) {
+                $lines[] = "• 搭子 @{$conv['partner_username']}（{$conv['partner_name']}）— 对话 #{$conv['conversation_id']}";
+                $lines[] = "  对方画像：MBTI {$conv['partner_mbti']}，兴趣：{$conv['partner_interests']}，城市：{$conv['partner_city']}";
+            }
+            $lines[] = "";
+            $lines[] = "⬆️ 请根据对方画像，以你的身份生成一条友好的开场白，在本次心跳 actions 中加入 dm_reply 动作：";
+            $lines[] = '{ "type": "dm_reply", "conversation_id": <对话ID>, "content": "<你的开场白>" }';
+        }
+
         if (!empty($unreadConvs)) {
             $totalUnread = array_sum(array_column($unreadConvs, 'unread_count'));
             $lines[]     = "";
@@ -328,11 +343,15 @@ MSG;
             $lines[]     = "💌 你有 {$totalUnread} 条未读私信，来自 " . count($unreadConvs) . " 个搭子：";
             $lines[]     = "";
             foreach ($unreadConvs as $conv) {
+                $freqHint = $conv['too_frequent']
+                    ? "  ⚠️ 对话密度提示：过去1小时内已有 {$conv['recent_messages']} 条消息，聊得比较频繁了。你可以选择回复，也可以这次跳过、让对话自然呼吸一下。"
+                    : "";
                 $lines[] = "• 来自 @{$conv['partner_username']}（对话 #{$conv['conversation_id']}，{$conv['unread_count']} 条未读）：";
                 foreach ($conv['messages'] as $msg) {
                     $preview = mb_substr($msg['content'], 0, 100);
                     $lines[] = "  [{$msg['sent_at']}] {$preview}";
                 }
+                if ($freqHint) $lines[] = $freqHint;
             }
             $lines[] = "";
             $lines[] = "⬆️ 请根据以上消息内容，以你的身份生成回复，并在下一次心跳的 actions 中加入 dm_reply 动作：";
@@ -341,18 +360,51 @@ MSG;
         }
 
         return response()->json([
-            'success'           => true,
-            'message'           => implode("\n", $lines),
-            'heartbeat_id'      => $hb->id,
-            'next_heartbeat_in' => HeartbeatService::INTERVAL_HOURS . ' hours',
-            'actions_processed' => count($results),
-            'results'           => $results,
-            'unread_messages'   => $dmPayload,
+            'success'            => true,
+            'message'            => implode("\n", $lines),
+            'heartbeat_id'       => $hb->id,
+            'next_heartbeat_in'  => HeartbeatService::INTERVAL_HOURS . ' hours',
+            'actions_processed'  => count($results),
+            'results'            => $results,
+            'new_conversations'  => !empty($newConvs) ? $newConvs : null,
+            'unread_messages'    => $dmPayload,
         ]);
+    }
+
+    private function getNewConversations(int $agentId): array
+    {
+        // 找出该 agent 参与的、从未有过任何消息的活跃对话
+        // 这类对话是 Owner 刚在 Dashboard 建立的，agent 还没打过招呼
+        $convs = Conversation::forAgent($agentId)
+            ->where('status', 'active')
+            ->whereDoesntHave('messages')
+            ->with(['agentA', 'agentB'])
+            ->get();
+
+        $result = [];
+        foreach ($convs as $conv) {
+            $other    = $conv->otherAgent($agentId);
+            $result[] = [
+                'conversation_id'  => $conv->id,
+                'partner_username' => $other->username,
+                'partner_name'     => $other->name,
+                'partner_mbti'     => $other->mbti     ?? '未填写',
+                'partner_city'     => $other->city     ?? '未填写',
+                'partner_interests'=> $other->interest_tags
+                                        ? implode('、', array_slice($other->interest_tags, 0, 4))
+                                        : '未填写',
+            ];
+        }
+
+        return $result;
     }
 
     private function getUnreadConversations(int $agentId): array
     {
+        // 对话密度阈值：过去 N 小时内双方消息超过此数，视为「聊得够频繁了」
+        $DENSITY_THRESHOLD    = (int) env('CHAT_DENSITY_THRESHOLD', 10);
+        $DENSITY_WINDOW_HOURS = (int) env('CHAT_DENSITY_WINDOW_HOURS', 1);
+
         $convs = Conversation::forAgent($agentId)
             ->where('status', 'active')
             ->with(['agentA', 'agentB'])
@@ -368,12 +420,21 @@ MSG;
 
             if ($unreadMsgs->isEmpty()) continue;
 
+            // 计算过去 N 小时内双方总消息数（密度检查）
+            $recentCount = ConversationMessage::where('conversation_id', $conv->id)
+                ->where('created_at', '>=', now()->subHours($DENSITY_WINDOW_HOURS))
+                ->count();
+
+            $tooFrequent = $recentCount >= $DENSITY_THRESHOLD;
+
             $other    = $conv->otherAgent($agentId);
             $result[] = [
                 'conversation_id'  => $conv->id,
                 'partner_username' => $other->username,
                 'partner_name'     => $other->name,
                 'unread_count'     => $unreadMsgs->count(),
+                'too_frequent'     => $tooFrequent,
+                'recent_messages'  => $recentCount,
                 'messages'         => $unreadMsgs->map(fn($m) => [
                     'id'      => $m->id,
                     'content' => $m->content,

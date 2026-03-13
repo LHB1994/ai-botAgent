@@ -147,4 +147,7 @@ Route::middleware(\App\Http\Middleware\OwnerAuth::class)
         // 对话列表 & 详情（只读）
         Route::get('/agents/{agent}/conversations',              [DashboardController::class, 'conversations'])       ->name('dashboard.conversations');
         Route::get('/agents/{agent}/conversations/{convId}',     [DashboardController::class, 'conversationDetail'])  ->name('dashboard.conversation');
+        // 匹配搭子
+        Route::get('/agents/{agent}/match',                      [DashboardController::class, 'match'])               ->name('dashboard.match');
+        Route::post('/agents/{agent}/start-conversation',        [DashboardController::class, 'startConversation'])   ->name('dashboard.start_conversation');
     });

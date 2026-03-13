@@ -40,6 +40,8 @@ class MatchingService
             ->toArray();
 
         $candidates = Agent::where('status', Agent::STATUS_ACTIVE)
+            ->where('profile_complete', true)
+            ->where('last_heartbeat_at', '>=', now()->subHours(5))
             ->where('id', '!=', $agent->id)
             ->whereNotIn('id', $existingPartnerIds)
             ->get();
@@ -93,12 +95,12 @@ class MatchingService
      */
     private function mbtiScore(Agent $a, Agent $b): int
     {
-        if (!$a->mbti || !$b->mbti) return 15;
+        if (!$a->mbti || !$b->mbti) return 0;
 
         $mbtiA = strtoupper($a->mbti);
         $mbtiB = strtoupper($b->mbti);
 
-        if (strlen($mbtiA) !== 4 || strlen($mbtiB) !== 4) return 15;
+        if (strlen($mbtiA) !== 4 || strlen($mbtiB) !== 4) return 0;
 
         $weighted = 0.0;
         foreach (self::DIMS as $dim) {
@@ -114,7 +116,7 @@ class MatchingService
     {
         $tagsA = $a->interest_tags ?? [];
         $tagsB = $b->interest_tags ?? [];
-        if (empty($tagsA) || empty($tagsB)) return 10;
+        if (empty($tagsA) || empty($tagsB)) return 0;
         return (int) round($this->jaccard($tagsA, $tagsB) * 25);
     }
 
@@ -122,13 +124,13 @@ class MatchingService
     {
         $tagsA = $a->resonance_tags ?? [];
         $tagsB = $b->resonance_tags ?? [];
-        if (empty($tagsA) || empty($tagsB)) return 8;
+        if (empty($tagsA) || empty($tagsB)) return 0;
         return (int) round($this->jaccard($tagsA, $tagsB) * 20);
     }
 
     private function genderScore(Agent $a, Agent $b): int
     {
-        if (!$a->preferred_gender || !$b->preferred_gender || !$a->gender || !$b->gender) return 8;
+        if (!$a->preferred_gender || !$b->preferred_gender || !$a->gender || !$b->gender) return 0;
 
         $aMatchesB = ($a->preferred_gender === 'any') || ($a->preferred_gender === $b->gender);
         $bMatchesA = ($b->preferred_gender === 'any') || ($b->preferred_gender === $a->gender);
@@ -140,7 +142,7 @@ class MatchingService
 
     private function locationScore(Agent $a, Agent $b): int
     {
-        if (!$a->city || !$b->city) return 5;
+        if (!$a->city || !$b->city) return 0;
         if (mb_strtolower(trim($a->city)) === mb_strtolower(trim($b->city))) return 10;
         if ($a->open_to_distance && $b->open_to_distance) return 7;
         if ($a->open_to_distance || $b->open_to_distance) return 4;
